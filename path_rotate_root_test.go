@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/vault/sdk/logical"
 )
@@ -102,5 +103,36 @@ func TestRotateRoot_FailsClosedWhenSuccessorUnusable(t *testing.T) {
 	}
 	if f.byAlias("vault-admin-key") == nil {
 		t.Fatal("previous admin key deleted although the successor failed")
+	}
+}
+
+// Covers every call the backend makes; see keyInfo.
+func TestNoPlaintextKeyInAnyURL(t *testing.T) {
+	for _, licensed := range []bool{false, true} {
+		f, b, s, _ := setupAdminKey(t)
+		f.licensed = licensed
+		if resp, err := handle(t, b, s, logical.UpdateOperation, "rotate-root", nil); err != nil || resp.IsError() {
+			t.Fatalf("licensed=%v rotate-root: resp %v err %v", licensed, resp, err)
+		}
+		if resp := writeRole(t, b, s, "app", map[string]any{"ttl": 60, "max_ttl": 120}); resp != nil && resp.IsError() {
+			t.Fatal(resp.Error())
+		}
+		creds, err := readCreds(t, b, s, "app", "")
+		if err != nil || creds.IsError() {
+			t.Fatalf("creds: resp %v err %v", creds, err)
+		}
+		secret := creds.Secret
+		secret.IssueTime = time.Now()
+		renew := &logical.Request{Operation: logical.RenewOperation, Path: credsPath + "app", Storage: s, Secret: secret}
+		if _, err := b.HandleRequest(context.Background(), renew); err != nil {
+			t.Fatalf("renew: %v", err)
+		}
+		revoke := &logical.Request{Operation: logical.RevokeOperation, Path: credsPath + "app", Storage: s, Secret: secret}
+		if _, err := b.HandleRequest(context.Background(), revoke); err != nil {
+			t.Fatalf("revoke: %v", err)
+		}
+		if leaked := f.plaintextInURLs(); len(leaked) > 0 {
+			t.Fatalf("licensed=%v: plaintext key in request URL: %v", licensed, leaked)
+		}
 	}
 }
