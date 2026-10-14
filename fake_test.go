@@ -38,6 +38,8 @@ type fakeLiteLLM struct {
 
 	mu   sync.Mutex
 	keys map[string]*fakeKey // by alias
+	// urls records every request URL.
+	urls []string
 }
 
 type fakeKey struct {
@@ -99,6 +101,20 @@ func (f *fakeLiteLLM) byAlias(alias string) *fakeKey {
 	return f.keys[alias]
 }
 
+// plaintextInURLs returns every recorded request URL carrying a key's
+// plaintext. Fake keys all begin "sk-"; hashes are hex.
+func (f *fakeLiteLLM) plaintextInURLs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var leaked []string
+	for _, u := range f.urls {
+		if strings.Contains(u, "sk-") {
+			leaked = append(leaked, u)
+		}
+	}
+	return leaked
+}
+
 func (f *fakeLiteLLM) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -107,6 +123,9 @@ func (f *fakeLiteLLM) count() int {
 
 func (f *fakeLiteLLM) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.urls = append(f.urls, r.URL.String())
+		f.mu.Unlock()
 		got := r.Header.Get("Authorization")
 		switch {
 		case got == "":

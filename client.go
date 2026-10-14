@@ -98,13 +98,14 @@ type keyOwner struct {
 	KeyAlias string `json:"key_alias"`
 }
 
-// keyInfo returns a 404 apiError for the master key, which LiteLLM does not
-// store.
-func (c *client) keyInfo(ctx context.Context, key string) (*keyOwner, error) {
+// keyInfo looks a key up by its hash, and returns a 404 apiError for the
+// master key, which LiteLLM does not store. Never pass a plaintext key: it would
+// travel in the query string, which LiteLLM's access log records.
+func (c *client) keyInfo(ctx context.Context, tokenID string) (*keyOwner, error) {
 	var out struct {
 		Info keyOwner `json:"info"`
 	}
-	if err := c.do(ctx, http.MethodGet, "/key/info?key="+url.QueryEscape(key), nil, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, "/key/info?key="+url.QueryEscape(tokenID), nil, &out); err != nil {
 		return nil, err
 	}
 	return &out.Info, nil

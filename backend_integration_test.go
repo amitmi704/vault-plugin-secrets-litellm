@@ -202,7 +202,8 @@ func TestIntegration_RotateRoot(t *testing.T) {
 		t.Fatal("rotation did not swap which admin key authenticates")
 	}
 	rotated := newClient(c.baseURL, cfg.AdminKey, c.http)
-	if info, err := rotated.keyInfo(ctx, cfg.AdminKey); err != nil || info.UserID != user {
+	newSum := sha256.Sum256([]byte(cfg.AdminKey))
+	if info, err := rotated.keyInfo(ctx, hex.EncodeToString(newSum[:])); err != nil || info.UserID != user {
 		t.Fatalf("rotated key not under the same user: %v %v", info, err)
 	}
 	if _, err := rotated.generateKey(ctx, map[string]any{"key_alias": user + "-probe", "duration": "1m", "user_id": user}); err != nil {

@@ -41,7 +41,11 @@ func (b *backend) pathRotateRootWrite(ctx context.Context, req *logical.Request,
 	if err != nil {
 		return nil, err
 	}
-	info, err := c.keyInfo(ctx, cfg.AdminKey)
+	// LiteLLM's hash is sha256 of the plaintext (pinned by the integration
+	// suite). Look the key up by it; see keyInfo.
+	sum := sha256.Sum256([]byte(cfg.AdminKey))
+	oldHash := hex.EncodeToString(sum[:])
+	info, err := c.keyInfo(ctx, oldHash)
 	var ae *apiError
 	if errors.As(err, &ae) && ae.Status == 404 {
 		return logical.ErrorResponse("admin_key is not a virtual key; the master key cannot be rotated. Configure a key under a proxy_admin user first."), nil
@@ -49,10 +53,6 @@ func (b *backend) pathRotateRootWrite(ctx context.Context, req *logical.Request,
 	if err != nil {
 		return nil, err
 	}
-	// LiteLLM's hash is sha256 of the plaintext (pinned by the integration
-	// suite) and /key/info by plaintext does not return it.
-	sum := sha256.Sum256([]byte(cfg.AdminKey))
-	oldHash := hex.EncodeToString(sum[:])
 
 	fallback := false
 	newKey, err := c.regenerateKey(ctx, oldHash)
